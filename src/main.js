@@ -1,22 +1,21 @@
+// main.js
 import { Notify } from 'notiflix/build/notiflix-notify-aio';
 import ImagesApiService from './public/image';
 import SimpleLightbox from 'simplelightbox';
 import 'simplelightbox/dist/simple-lightbox.min.css';
-import iziToast from 'izitoast/dist/js/iziToast.min.js';
-import 'izitoast/dist/css/iziToast.min.css';
 
 const imageApiService = new ImagesApiService();
 const form = document.querySelector('form#search-form');
 const gallery = document.querySelector('div.gallery');
 const loadMoreBtn = document.querySelector('button.load-more');
+let currentPage = 1;
 
 form.addEventListener('submit', onSubmit);
 loadMoreBtn.addEventListener('click', onLoadMore);
 
-// Початково приховуємо кнопку "Load more"
 loadMoreBtn.classList.add('is-hidden');
 
-function onSubmit(e) {
+async function onSubmit(e) {
   e.preventDefault();
   gallery.innerHTML = '';
   imageApiService.query = e.currentTarget.elements.searchQuery.value.trim();
@@ -24,46 +23,39 @@ function onSubmit(e) {
   if (imageApiService.query === '') {
     Notify.info('Please enter your search query!');
     return;
-  } else {
-    imageApiService
-      .getImage()
-      .then(data => {
-        let queriesArray = data.hits;
-        if (queriesArray.length === 0) {
-          Notify.failure(
-            'Sorry, there are no images matching your search query. Please try again.'
-          );
-        } else if (queriesArray.length < 40) {
-          renderImages(queriesArray);
-          // Показуємо кнопку "Load more" при наявності результатів
-          loadMoreBtn.classList.remove('is-hidden');
-          Notify.success(`Hooray! We found ${data.totalHits} images.`);
-        } else {
-          renderImages(queriesArray);
-          // Показуємо кнопку "Load more" при наявності результатів
-          loadMoreBtn.classList.remove('is-hidden');
-          Notify.success(`Hooray! We found ${data.totalHits} images.`);
-        }
-      })
-      .catch(error => {
-        Notify.info(
-          "We're sorry, but you've reached the end of search results."
-        );
-        console.log(error);
-      });
+  }
+
+  try {
+    const { data } = await imageApiService.getImage(currentPage);
+    let queriesArray = data.hits;
+    if (queriesArray.length === 0) {
+      Notify.failure(
+        'Sorry, there are no images matching your search query. Please try again.'
+      );
+    } else {
+      renderImages(queriesArray);
+      loadMoreBtn.classList.remove('is-hidden');
+      Notify.success(`Hooray! We found ${data.totalHits} images.`);
+    }
+  } catch (error) {
+    Notify.info("We're sorry, but you've reached the end of search results.");
+    console.log(error);
   }
 }
 
-function onLoadMore() {
-  imageApiService.getImage().then(data => {
+async function onLoadMore() {
+  currentPage++;
+  try {
+    const { data } = await imageApiService.getImage(currentPage);
     let queriesArray = data.hits;
     renderImages(queriesArray);
-    if (queriesArray.length < 40) {
-      // Приховуємо кнопку "Load more" при досягненні кінця результатів
+    if (queriesArray.length < 15) {
       loadMoreBtn.classList.add('is-hidden');
       Notify.info("We're sorry, but you've reached the end of search results.");
     }
-  });
+  } catch (error) {
+    console.log(error);
+  }
 }
 
 function renderImages(queriesArray) {
@@ -82,7 +74,6 @@ function renderImages(queriesArray) {
     .join('');
   gallery.insertAdjacentHTML('beforeend', markup);
 
-  // Ініціалізація SimpleLightbox
   const lightbox = new SimpleLightbox('.gallery a', {
     captionsData: 'alt',
     captionPosition: 'bottom',
