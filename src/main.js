@@ -1,77 +1,94 @@
 // main.js
-import { Notify } from 'notiflix/build/notiflix-notify-aio';
-import ImagesApiService from './public/image';
+import axios from 'axios';
+import { Notify } from 'notiflix';
 import SimpleLightbox from 'simplelightbox';
 import 'simplelightbox/dist/simple-lightbox.min.css';
 
-const imageApiService = new ImagesApiService();
-const form = document.querySelector('form#search-form');
-const gallery = document.querySelector('div.gallery');
-const loadMoreBtn = document.querySelector('button.load-more');
+const BASE_URL = 'https://pixabay.com/api/';
+const API_KEY = '42103820-367af78541649bbd92098b568';
+
+const form = document.querySelector('.search-form');
+const gallery = document.querySelector('.gallery');
+const loadMoreBtn = document.querySelector('.load-more');
+const endCollectionText = document.querySelector('.end-collection-text');
+
 let currentPage = 1;
+let searchQuery = '';
 
 form.addEventListener('submit', onSubmit);
 loadMoreBtn.addEventListener('click', onLoadMore);
 
 loadMoreBtn.classList.add('is-hidden');
 
-async function onSubmit(e) {
-  e.preventDefault();
+async function onSubmit(event) {
+  event.preventDefault();
+  currentPage = 1;
+  searchQuery = event.currentTarget.elements.searchQuery.value.trim();
   gallery.innerHTML = '';
-  imageApiService.query = e.currentTarget.elements.searchQuery.value.trim();
-  imageApiService.resetPage();
-  if (imageApiService.query === '') {
-    Notify.info('Please enter your search query!');
-    return;
-  }
+  await fetchImages();
+}
 
+async function fetchImages() {
   try {
-    const { data } = await imageApiService.getImage(currentPage);
-    let queriesArray = data.hits;
-    if (queriesArray.length === 0) {
+    const response = await axios.get(BASE_URL, {
+      params: {
+        key: API_KEY,
+        q: searchQuery,
+        image_type: 'photo',
+        orientation: 'horizontal',
+        safesearch: 'true',
+        per_page: 15,
+        page: currentPage,
+      },
+    });
+
+    const { hits, totalHits } = response.data;
+
+    if (hits.length === 0) {
       Notify.failure(
         'Sorry, there are no images matching your search query. Please try again.'
       );
     } else {
-      renderImages(queriesArray);
-      loadMoreBtn.classList.remove('is-hidden');
-      Notify.success(`Hooray! We found ${data.totalHits} images.`);
+      renderImages(hits);
+      Notify.success(`Hooray! We found ${totalHits} images.`);
+      if (hits.length < 15) {
+        loadMoreBtn.classList.add('is-hidden');
+        endCollectionText.classList.remove('is-hidden');
+      } else {
+        loadMoreBtn.classList.remove('is-hidden');
+        endCollectionText.classList.add('is-hidden');
+      }
     }
   } catch (error) {
-    Notify.info("We're sorry, but you've reached the end of search results.");
-    console.log(error);
+    console.error('Error fetching images:', error);
+    Notify.failure("We're sorry, but there was an error fetching images.");
   }
 }
 
 async function onLoadMore() {
   currentPage++;
-  try {
-    const { data } = await imageApiService.getImage(currentPage);
-    let queriesArray = data.hits;
-    renderImages(queriesArray);
-    if (queriesArray.length < 15) {
-      loadMoreBtn.classList.add('is-hidden');
-      Notify.info("We're sorry, but you've reached the end of search results.");
-    }
-  } catch (error) {
-    console.log(error);
-  }
+  await fetchImages();
 }
 
-function renderImages(queriesArray) {
-  const markup = queriesArray
-    .map(item => {
-      return `<a href="${item.largeImageURL}" class="photo-card" data-lightbox="gallery">
-        <div class="thumb"><img src="${item.webformatURL}" alt="${item.tags}" loading="lazy" /></div>
-        <div class="info">
-          <p class="info-item"><b>Likes</b><span>${item.likes}</span></p>
-          <p class="info-item"><b>Views</b><span>${item.views}</span></p>
-          <p class="info-item"><b>Comments</b><span>${item.comments}</span></p>
-          <p class="info-item"><b>Downloads</b><span>${item.downloads}</span></p>
-        </div>
-      </a>`;
+function renderImages(images) {
+  const markup = images
+    .map(image => {
+      return `
+                <a href="${image.largeImageURL}" class="photo-card" data-lightbox="gallery">
+                    <div class="thumb">
+                        <img src="${image.webformatURL}" alt="${image.tags}" loading="lazy" />
+                    </div>
+                    <div class="info">
+                        <p class="info-item"><b>Likes:</b> ${image.likes}</p>
+                        <p class="info-item"><b>Views:</b> ${image.views}</p>
+                        <p class="info-item"><b>Comments:</b> ${image.comments}</p>
+                        <p class="info-item"><b>Downloads:</b> ${image.downloads}</p>
+                    </div>
+                </a>
+            `;
     })
     .join('');
+
   gallery.insertAdjacentHTML('beforeend', markup);
 
   const lightbox = new SimpleLightbox('.gallery a', {
@@ -79,4 +96,7 @@ function renderImages(queriesArray) {
     captionPosition: 'bottom',
     captionDelay: 250,
   });
+
+  // Remove the "is-hidden" class from the "Load more" button
+  loadMoreBtn.classList.remove('is-hidden');
 }
